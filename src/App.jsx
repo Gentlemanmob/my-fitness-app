@@ -12,8 +12,6 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 // ==========================================
 // Firebase 云端数据库配置区域
 // ==========================================
-// 在当前预览环境中，会自动注入云端配置。
-// 如果你部署到 Vercel，你需要将这里的 firebaseConfig 替换为你自己申请的 Firebase 配置对象。
 const firebaseConfig = {
   apiKey: "AIzaSyB2GZPB577KIzln07ohUgjaDr2ImoQacq0",
   authDomain: "my-fitness-app-48bfd.firebaseapp.com",
@@ -38,7 +36,7 @@ const MUSCLES = {
   arms: { id: 'arms', name: '手臂', color: '#8b5cf6' }, 
 };
 
-// 默认周计划数据 (0 = 周日, 1 = 周一 ...)
+// 默认周计划数据
 const defaultWeeklyPlan = {
   1: [
     { id: '101', name: '跪姿俯卧撑', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] },
@@ -109,6 +107,9 @@ export default function App() {
   const [newEx, setNewEx] = useState({ name: '', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['chest'] });
   const fileInputRef = useRef(null);
 
+  // 日历查看月份控制
+  const [displayDate, setDisplayDate] = useState(new Date());
+
   // 动态注入 Tailwind CSS
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
@@ -119,13 +120,10 @@ export default function App() {
     }
   }, []);
 
-  // ==========================================
-  // 云端同步逻辑 (Firestore)
-  // ==========================================
   // 1. 初始化鉴权
   useEffect(() => {
     if (!auth) {
-      setIsLoaded(true); // 无后端配置，立即进入单机模式
+      setIsLoaded(true);
       return;
     }
     const initAuth = async () => {
@@ -136,7 +134,7 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (error) {
-        console.error("鉴权失败，进入单机模式", error);
+        console.error("鉴权失败", error);
         setIsLoaded(true);
       }
     };
@@ -153,8 +151,6 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const dataStr = JSON.stringify(data);
-        
-        // 避免死循环：如果从云端拉取的数据和上次上传的一样，则跳过
         if (dataStr === lastSavedData.current) return; 
 
         lastSavedData.current = dataStr;
@@ -175,9 +171,8 @@ export default function App() {
     if (!isLoaded || !user || !db) return;
     
     const currentDataStr = JSON.stringify({ weeklyPlan, dailyRecords, history });
-    if (currentDataStr === lastSavedData.current) return; // 数据没变不上传
+    if (currentDataStr === lastSavedData.current) return; 
 
-    // 防抖：延迟1.5秒保存，避免频繁请求
     const timeoutId = setTimeout(async () => {
       setIsSaving(true);
       try {
@@ -193,9 +188,7 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [weeklyPlan, dailyRecords, history, user, isLoaded]);
 
-  // ==========================================
   // 核心业务逻辑
-  // ==========================================
   const activeDateStr = formatDate(activeDate);
   const activeDayOfWeek = activeDate.getDay();
   const currentExercises = weeklyPlan[activeDayOfWeek] || [];
@@ -287,7 +280,7 @@ export default function App() {
   }
 
   // ==========================================
-  // 渲染函数
+  // 子页面渲染函数
   // ==========================================
   const renderHome = () => {
     const isToday = formatDate(new Date()) === activeDateStr;
@@ -356,7 +349,6 @@ export default function App() {
                   </div>
                </div>
              </div>
-             
              <div className="w-1/2 flex justify-end">
                 <BodyMap activeMuscles={activeMuscles} />
              </div>
@@ -538,16 +530,24 @@ export default function App() {
   };
 
   const renderCalendar = () => {
-    const year = displayDate?.getFullYear() || new Date().getFullYear();
-    const month = displayDate?.getMonth() || new Date().getMonth();
+    const year = displayDate.getFullYear();
+    const month = displayDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const days = Array.from({length: new Date(year, month, 1).getDay()}).fill(null).concat(Array.from({length: daysInMonth}, (_, i) => i + 1));
+    const firstDay = new Date(year, month, 1).getDay();
+    const days = Array.from({length: firstDay}).fill(null).concat(Array.from({length: daysInMonth}, (_, i) => i + 1));
+
+    const prevMonth = () => setDisplayDate(new Date(year, month - 1, 1));
+    const nextMonth = () => setDisplayDate(new Date(year, month + 1, 1));
 
     return (
       <div className="p-6 pb-28 max-w-md mx-auto h-full flex flex-col">
         <header className="mb-6 mt-2"><h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2"><CalendarCheck className="text-indigo-600" />打卡日历</h1></header>
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-          <h2 className="text-xl font-bold text-gray-800 mb-6 text-center">{year}年 {month + 1}月</h2>
+          <div className="flex justify-between items-center mb-6">
+            <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-full transition"><ChevronLeft size={24} className="text-gray-600" /></button>
+            <h2 className="text-xl font-bold text-gray-800 text-center">{year}年 {month + 1}月</h2>
+            <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-full transition"><ChevronRight size={24} className="text-gray-600" /></button>
+          </div>
           <div className="grid grid-cols-7 gap-2 mb-4 text-center">
             {['日', '一', '二', '三', '四', '五', '六'].map(day => <div key={day} className="text-xs font-semibold text-gray-400">{day}</div>)}
           </div>

@@ -3,13 +3,29 @@ import {
   Dumbbell, Play, Plus, Clock, CheckCircle2, 
   Home, Settings, Video, X, RotateCcw,
   Trophy, CalendarDays, CalendarCheck, ChevronLeft, ChevronRight,
-  Activity, Save, Check, Loader2
+  Activity, Cloud, CloudOff, Loader2
 } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 // ==========================================
-// 本地永久存储配置 (替代了被墙的 Firebase)
+// Firebase 云端数据库配置区域
 // ==========================================
-const STORAGE_KEY = 'my_fitness_app_data_v1';
+const firebaseConfig = {
+  apiKey: "AIzaSyB2GZPB577KIzln07ohUgjaDr2ImoQacq0",
+  authDomain: "my-fitness-app-48bfd.firebaseapp.com",
+  projectId: "my-fitness-app-48bfd",
+  storageBucket: "my-fitness-app-48bfd.firebasestorage.app",
+  messagingSenderId: "477764715862",
+  appId: "1:477764715862:web:77db4ea3e48052596c02f7",
+  measurementId: "G-WQKC8FYS4Z"
+};
+
+const app = firebaseConfig ? initializeApp(firebaseConfig) : null;
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'fitness-app-id';
 
 // 肌肉部位定义
 const MUSCLES = {
@@ -70,8 +86,11 @@ const BodyMap = ({ activeMuscles }) => {
 };
 
 export default function App() {
+  // 云端存储相关状态
+  const [user, setUser] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const lastSavedData = useRef('');
 
   // 业务状态
   const [currentView, setCurrentView] = useState('home'); 
@@ -87,6 +106,8 @@ export default function App() {
   const [manageDay, setManageDay] = useState(new Date().getDay()); 
   const [newEx, setNewEx] = useState({ name: '', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['chest'] });
   const fileInputRef = useRef(null);
+
+  // 日历查看月份控制
   const [displayDate, setDisplayDate] = useState(new Date());
 
   // 动态注入 Tailwind CSS
@@ -99,42 +120,73 @@ export default function App() {
     }
   }, []);
 
-  // ==========================================
-  // 1. 初始化时：从本地存储读取数据
-  // ==========================================
+  // 1. 初始化鉴权
   useEffect(() => {
-    try {
-      const savedDataStr = localStorage.getItem(STORAGE_KEY);
-      if (savedDataStr) {
-        const data = JSON.parse(savedDataStr);
+    if (!auth) {
+      setIsLoaded(true);
+      return;
+    }
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("鉴权失败", error);
+        setIsLoaded(true);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. 监听云端数据下载
+  useEffect(() => {
+    if (!user || !db) return;
+    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'fitness_data', 'main');
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const dataStr = JSON.stringify(data);
+        if (dataStr === lastSavedData.current) return; 
+
+        lastSavedData.current = dataStr;
         if (data.weeklyPlan) setWeeklyPlan(data.weeklyPlan);
         if (data.dailyRecords) setDailyRecords(data.dailyRecords);
         if (data.history) setHistory(data.history);
       }
-    } catch (e) {
-      console.error("读取本地数据失败", e);
-    }
-    setIsLoaded(true);
-  }, []);
+      setIsLoaded(true);
+    }, (error) => {
+      console.error("拉取数据失败:", error);
+      setIsLoaded(true);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
-  // ==========================================
-  // 2. 数据变动时：自动写入本地存储
-  // ==========================================
+  // 3. 监听本地数据变动并上传
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || !user || !db) return;
     
-    setIsSaving(true);
-    try {
-      const dataToSave = JSON.stringify({ weeklyPlan, dailyRecords, history });
-      localStorage.setItem(STORAGE_KEY, dataToSave);
-    } catch (e) {
-      console.error("保存本地数据失败", e);
-    }
+    const currentDataStr = JSON.stringify({ weeklyPlan, dailyRecords, history });
+    if (currentDataStr === lastSavedData.current) return; 
+
+    const timeoutId = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        lastSavedData.current = currentDataStr;
+        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'fitness_data', 'main');
+        await setDoc(docRef, { weeklyPlan, dailyRecords, history }, { merge: true });
+      } catch (error) {
+        console.error("保存失败:", error);
+      }
+      setIsSaving(false);
+    }, 1500);
     
-    // UI 提示短暂闪烁效果
-    const timer = setTimeout(() => setIsSaving(false), 800);
-    return () => clearTimeout(timer);
-  }, [weeklyPlan, dailyRecords, history, isLoaded]);
+    return () => clearTimeout(timeoutId);
+  }, [weeklyPlan, dailyRecords, history, user, isLoaded]);
 
   // 核心业务逻辑
   const activeDateStr = formatDate(activeDate);
@@ -222,7 +274,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-indigo-600">
         <Loader2 size={48} className="animate-spin mb-4" />
-        <p className="font-medium text-gray-500">正在加载你的健身数据...</p>
+        <p className="font-medium text-gray-500">正在同步你的健身数据...</p>
       </div>
     );
   }
@@ -243,8 +295,8 @@ export default function App() {
              </h1>
              <div className="flex items-center gap-3">
                <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                 {isSaving ? <Save size={12} className="text-indigo-500" /> : <Check size={12} className="text-green-500" />}
-                 <span className="hidden sm:inline">{isSaving ? '保存中' : '已存本地'}</span>
+                 {isSaving ? <Loader2 size={12} className="animate-spin text-indigo-500" /> : (db ? <Cloud size={12} className="text-green-500" /> : <CloudOff size={12} />)}
+                 <span className="hidden sm:inline">{isSaving ? '同步中' : (db ? '已同步' : '单机模式')}</span>
                </div>
                <button onClick={() => setActiveDate(new Date())} className="text-xs font-medium bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition">
                  回今天

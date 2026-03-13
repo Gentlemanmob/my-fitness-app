@@ -14,7 +14,16 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 // ==========================================
 // 在当前预览环境中，会自动注入云端配置。
 // 如果你部署到 Vercel，你需要将这里的 firebaseConfig 替换为你自己申请的 Firebase 配置对象。
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+const firebaseConfig = {
+  apiKey: "AIzaSyB2GZPB577KIzln07ohUgjaDr2ImoQacq0",
+  authDomain: "my-fitness-app-48bfd.firebaseapp.com",
+  projectId: "my-fitness-app-48bfd",
+  storageBucket: "my-fitness-app-48bfd.firebasestorage.app",
+  messagingSenderId: "477764715862",
+  appId: "1:477764715862:web:77db4ea3e48052596c02f7",
+  measurementId: "G-WQKC8FYS4Z"
+};
+
 const app = firebaseConfig ? initializeApp(firebaseConfig) : null;
 const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;

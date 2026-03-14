@@ -3,13 +3,60 @@ import {
   Dumbbell, Play, Plus, Clock, CheckCircle2, 
   Home, Settings, Video, X, RotateCcw,
   Trophy, CalendarDays, CalendarCheck, ChevronLeft, ChevronRight,
-  Activity, Save, Check, Loader2
+  Activity, Save, Check, Loader2, BookOpen, ListPlus, Trash2, Pencil
 } from 'lucide-react';
 
 // ==========================================
-// 本地永久存储配置 (满血无缝秒开版)
+// 1. 本地永久存储配置
 // ==========================================
 const STORAGE_KEY = 'my_fitness_app_full_v1';
+
+// ==========================================
+// 2. IndexedDB 视频存储引擎
+// ==========================================
+const DB_NAME = 'FitnessAppDB';
+const STORE_NAME = 'videos';
+
+const initDB = () => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore(STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveVideoToDB = async (id, file) => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(file, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+const getVideoFromDB = async (id) => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+};
+
+const deleteVideoFromDB = async (id) => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
 
 // 肌肉部位定义
 const MUSCLES = {
@@ -20,7 +67,19 @@ const MUSCLES = {
   arms: { id: 'arms', name: '手臂', color: '#8b5cf6' }, 
 };
 
-// 默认周计划数据 (0 = 周日, 1 = 周一 ...)
+// 默认动作库
+const defaultLibrary = [
+  { id: 'lib_1', name: '跪姿俯卧撑', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] },
+  { id: 'lib_2', name: '板凳臂屈伸', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['arms'] },
+  { id: 'lib_3', name: '自重深蹲', sets: 4, reps: '15', restTime: 60, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', targets: ['legs'] },
+  { id: 'lib_4', name: '弓箭步', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['legs'] },
+  { id: 'lib_5', name: '平板支撑', sets: 3, reps: '30秒', restTime: 45, videoUrl: null, targets: ['core'] },
+  { id: 'lib_6', name: '卷腹', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['core'] },
+  { id: 'lib_7', name: '引体向上', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['back', 'arms'] },
+  { id: 'lib_8', name: '超人起飞', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['back', 'core'] }
+];
+
+// 默认周计划数据
 const defaultWeeklyPlan = {
   1: [
     { id: '101', name: '跪姿俯卧撑', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] },
@@ -42,8 +101,7 @@ const defaultWeeklyPlan = {
     { id: '501', name: '波比跳', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['legs', 'core', 'chest'] },
     { id: '502', name: '俯卧撑', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] }
   ],
-  6: [], 
-  0: []  
+  6: [], 0: []  
 };
 
 const formatDate = (date) => {
@@ -77,14 +135,26 @@ export default function App() {
   const [activeDate, setActiveDate] = useState(new Date());
   const [dailyRecords, setDailyRecords] = useState({}); 
   const [history, setHistory] = useState({}); 
-  const [activeVideo, setActiveVideo] = useState(null);
   const [isResting, setIsResting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+
+  const [exerciseLibrary, setExerciseLibrary] = useState(defaultLibrary);
+  const [manageTab, setManageTab] = useState('plan'); 
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
 
   const [manageDay, setManageDay] = useState(new Date().getDay()); 
   const [newEx, setNewEx] = useState({ name: '', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['chest'] });
   const fileInputRef = useRef(null);
   const [displayDate, setDisplayDate] = useState(new Date());
+
+  // 视频播放相关状态
+  const [activeVideo, setActiveVideo] = useState(null); 
+  const [playingVideoUrl, setPlayingVideoUrl] = useState(null); 
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+
+  // 编辑功能专属状态
+  const [editingEx, setEditingEx] = useState(null);
+  const [editingContext, setEditingContext] = useState(null);
 
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
@@ -104,6 +174,7 @@ export default function App() {
         if (data.weeklyPlan) setWeeklyPlan(data.weeklyPlan);
         if (data.dailyRecords) setDailyRecords(data.dailyRecords);
         if (data.history) setHistory(data.history);
+        if (data.exerciseLibrary) setExerciseLibrary(data.exerciseLibrary);
       }
     } catch (e) {
       console.error("读取本地数据失败", e);
@@ -111,23 +182,45 @@ export default function App() {
     setIsLoaded(true);
   }, []);
 
-  // 2. 数据变动时：自动写入本地存储 (加入防抖，避免频繁闪烁)
+  // 2. 数据变动时：自动写入本地存储
   useEffect(() => {
     if (!isLoaded) return;
-    
     setIsSaving(true);
     const timeoutId = setTimeout(() => {
       try {
-        const dataToSave = JSON.stringify({ weeklyPlan, dailyRecords, history });
+        const dataToSave = JSON.stringify({ weeklyPlan, dailyRecords, history, exerciseLibrary });
         localStorage.setItem(STORAGE_KEY, dataToSave);
       } catch (e) {
         console.error("保存本地数据失败", e);
       }
       setIsSaving(false);
-    }, 500); // 500ms 延迟，显示保存动画
-    
+    }, 500); 
     return () => clearTimeout(timeoutId);
-  }, [weeklyPlan, dailyRecords, history, isLoaded]);
+  }, [weeklyPlan, dailyRecords, history, exerciseLibrary, isLoaded]);
+
+  // 3. 处理视频播放（解析 IndexedDB 文件）
+  useEffect(() => {
+    let objectUrl = null;
+    const resolveVideo = async () => {
+      if (!activeVideo) return setPlayingVideoUrl(null);
+      if (activeVideo.startsWith('idb://')) {
+        const videoId = activeVideo.replace('idb://', '');
+        const file = await getVideoFromDB(videoId);
+        if (file) {
+          objectUrl = URL.createObjectURL(file);
+          setPlayingVideoUrl(objectUrl);
+        } else {
+          alert('找不到该视频文件，可能之前的临时文件已失效。请前往"计划"重新编辑此动作并上传视频。');
+          setActiveVideo(null);
+        }
+      } else {
+        setPlayingVideoUrl(activeVideo);
+      }
+    };
+    resolveVideo();
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [activeVideo]);
+
 
   const activeDateStr = formatDate(activeDate);
   const activeDayOfWeek = activeDate.getDay();
@@ -367,11 +460,24 @@ export default function App() {
   const renderManage = () => {
     const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     
-    const handleVideoUpload = (e) => {
+    const handleVideoUpload = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        const videoUrl = URL.createObjectURL(file);
-        setNewEx({ ...newEx, videoUrl });
+        if (file.size > 50 * 1024 * 1024) {
+          alert('为了保证运行流畅，请上传 50MB 以内的演示视频。');
+          return;
+        }
+        setIsUploadingVideo(true);
+        try {
+          const videoId = `vid_${Date.now()}`;
+          await saveVideoToDB(videoId, file);
+          setNewEx({ ...newEx, videoUrl: `idb://${videoId}` });
+        } catch (error) {
+          console.error("保存视频失败", error);
+          alert('视频本地保存失败，请重试。');
+        } finally {
+          setIsUploadingVideo(false);
+        }
       }
     };
 
@@ -382,17 +488,33 @@ export default function App() {
       });
     };
     
-    const handleAdd = () => {
+    const handleAddToLibrary = () => {
       if (!newEx.name) return alert('请输入动作名称');
       if (newEx.targets.length === 0) return alert('请至少选择一个锻炼部位');
-      const updatedPlan = { ...weeklyPlan };
-      if (!updatedPlan[manageDay]) updatedPlan[manageDay] = [];
-      updatedPlan[manageDay].push({ ...newEx, id: Date.now().toString() });
-      setWeeklyPlan(updatedPlan);
+      const newLibEx = { ...newEx, id: `lib_${Date.now()}` };
+      setExerciseLibrary([...exerciseLibrary, newLibEx]);
       setNewEx({ name: '', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['chest'] });
+      alert('动作已成功存入动作库！');
     };
 
-    const removeExercise = (id) => {
+    const removeFromLibrary = (id) => {
+      if (!window.confirm('确定要从动作库删除吗？（已安排的计划不会受影响，但本地演示视频会被清理）')) return;
+      const exToRemove = exerciseLibrary.find(ex => ex.id === id);
+      if (exToRemove && exToRemove.videoUrl && exToRemove.videoUrl.startsWith('idb://')) {
+        deleteVideoFromDB(exToRemove.videoUrl.replace('idb://', '')).catch(console.error);
+      }
+      setExerciseLibrary(exerciseLibrary.filter(ex => ex.id !== id));
+    };
+
+    const addFromLibraryToPlan = (libEx) => {
+      const updatedPlan = { ...weeklyPlan };
+      if (!updatedPlan[manageDay]) updatedPlan[manageDay] = [];
+      updatedPlan[manageDay].push({ ...libEx, id: `plan_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` });
+      setWeeklyPlan(updatedPlan);
+      setShowLibraryPicker(false);
+    };
+
+    const removeFromPlan = (id) => {
       const updatedPlan = { ...weeklyPlan };
       updatedPlan[manageDay] = updatedPlan[manageDay].filter(ex => ex.id !== id);
       setWeeklyPlan(updatedPlan);
@@ -401,67 +523,151 @@ export default function App() {
     return (
       <div className="p-6 pb-28 max-w-md mx-auto h-full flex flex-col overflow-y-auto">
         <header className="mb-6 mt-2">
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Settings className="text-indigo-600" />周计划设置</h1>
+          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Settings className="text-indigo-600" />计划与动作库</h1>
         </header>
 
-        <div className="flex bg-gray-200 p-1 rounded-xl mb-6 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {weekNames.map((name, idx) => (
-            <button key={idx} onClick={() => setManageDay(idx)} className={`flex-1 py-2 text-sm font-medium rounded-lg whitespace-nowrap px-3 transition-all ${manageDay === idx ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>
-              {name}
-            </button>
-          ))}
+        <div className="flex bg-gray-200 p-1 rounded-xl mb-6">
+          <button onClick={() => setManageTab('plan')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${manageTab === 'plan' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>
+            <CalendarDays size={16} /> 计划排表
+          </button>
+          <button onClick={() => setManageTab('library')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${manageTab === 'library' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>
+            <BookOpen size={16} /> 我的动作库
+          </button>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
-          <h2 className="text-lg font-semibold mb-4 border-b pb-2">添加到 {weekNames[manageDay]}</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs text-gray-600 mb-2">锻炼部位 (可多选)</label>
-              <div className="flex gap-2 flex-wrap">
-                 {Object.values(MUSCLES).map(m => {
-                   const isSelected = newEx.targets.includes(m.id);
-                   return <button key={m.id} onClick={() => toggleTargetMuscle(m.id)} className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${isSelected ? 'text-white border-transparent shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`} style={{ backgroundColor: isSelected ? m.color : '' }}>{m.name}</button>;
-                 })}
-              </div>
+        {manageTab === 'plan' ? (
+          <div className="animate-in fade-in duration-300">
+            <div className="flex bg-gray-100 p-1 rounded-xl mb-6 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {weekNames.map((name, idx) => (
+                <button key={idx} onClick={() => setManageDay(idx)} className={`flex-1 py-2 text-sm font-medium rounded-lg whitespace-nowrap px-3 transition-all ${manageDay === idx ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`}>
+                  {name}
+                </button>
+              ))}
             </div>
-            <div><label className="block text-xs text-gray-600 mb-1">动作名称</label><input type="text" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} placeholder="例如：引体向上" /></div>
-            <div className="flex gap-3">
-              <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">组数</label><input type="number" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.sets} onChange={e => setNewEx({...newEx, sets: parseInt(e.target.value) || 0})} /></div>
-              <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">次数</label><input type="text" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.reps} onChange={e => setNewEx({...newEx, reps: e.target.value})} /></div>
-              <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">休息(秒)</label><input type="number" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.restTime} onChange={e => setNewEx({...newEx, restTime: parseInt(e.target.value) || 0})} /></div>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">动作演示视频 (可选)</label>
-              <input type="file" accept="video/*" className="hidden" ref={fileInputRef} onChange={handleVideoUpload} />
-              <button onClick={() => fileInputRef.current.click()} className="w-full border-2 border-dashed border-gray-300 rounded-xl p-3 text-gray-500 flex items-center justify-center hover:bg-gray-50 transition gap-2">
-                {newEx.videoUrl ? <><CheckCircle2 size={16} className="text-green-500" /> <span className="text-sm text-green-600">已选择视频</span></> : <><Video size={16} /> <span className="text-sm">点击选择本地视频文件</span></>}
+
+            <div className="flex justify-between items-end mb-4">
+              <h2 className="text-lg font-semibold text-gray-800">{weekNames[manageDay]} 训练安排</h2>
+              <button onClick={() => setShowLibraryPicker(true)} className="text-sm bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-full font-medium hover:bg-indigo-100 flex items-center gap-1">
+                <Plus size={14} /> 添加动作
               </button>
             </div>
-            <button onClick={handleAdd} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 mt-2 shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all">
-              <Plus size={18} /> 加入今日
-            </button>
-          </div>
-        </div>
 
-        <h2 className="text-sm font-semibold text-gray-500 mb-3">{weekNames[manageDay]} 动作清单</h2>
-        <div className="space-y-3">
-          {(weeklyPlan[manageDay] || []).length === 0 ? (
-            <p className="text-center text-sm text-gray-400 py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">本日休息</p>
-          ) : (
-            (weeklyPlan[manageDay] || []).map(ex => (
-              <div key={ex.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    {(ex.targets || []).map(t => MUSCLES[t] && <span key={t} className="w-2 h-2 rounded-full" style={{ backgroundColor: MUSCLES[t].color }}></span>)}
+            <div className="space-y-3">
+              {(weeklyPlan[manageDay] || []).length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">本日休息，点击上方按钮添加动作</p>
+              ) : (
+                (weeklyPlan[manageDay] || []).map(ex => (
+                  <div key={ex.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {(ex.targets || []).map(t => MUSCLES[t] && <span key={t} className="w-2 h-2 rounded-full" style={{ backgroundColor: MUSCLES[t].color }}></span>)}
+                      </div>
+                      <p className="font-semibold text-gray-800 text-sm">{ex.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{ex.sets}组 × {ex.reps} | 休息 {ex.restTime}s</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditingEx({...ex}); setEditingContext({ type: 'plan', day: manageDay }); }} className="text-gray-400 hover:text-indigo-500 p-2 transition-colors"><Pencil size={18} /></button>
+                      <button onClick={() => removeFromPlan(ex.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors"><Trash2 size={18} /></button>
+                    </div>
                   </div>
-                  <p className="font-semibold text-gray-800 text-sm">{ex.name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{ex.sets}组 × {ex.reps} | 休息 {ex.restTime}s</p>
+                ))
+              )}
+            </div>
+
+            {/* 从动作库选择的弹窗 */}
+            {showLibraryPicker && (
+              <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end transition-opacity">
+                <div className="bg-white w-full max-w-md mx-auto rounded-t-3xl p-6 pb-12 max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-full duration-300">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-bold text-gray-800">从动作库选择</h2>
+                    <button onClick={() => setShowLibraryPicker(false)} className="text-gray-400 hover:bg-gray-100 p-1.5 rounded-full"><X size={20} /></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-3 pb-10" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {exerciseLibrary.length === 0 ? (
+                      <p className="text-center text-gray-400 py-10 text-sm">动作库空空如也，先去创建吧</p>
+                    ) : (
+                      exerciseLibrary.map(libEx => (
+                        <div key={libEx.id} onClick={() => addFromLibraryToPlan(libEx)} className="bg-gray-50 hover:bg-indigo-50 hover:border-indigo-200 cursor-pointer p-4 rounded-xl border border-transparent transition-all flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-gray-800 text-sm">{libEx.name}</p>
+                            <p className="text-xs text-gray-400 mt-1">{libEx.sets}组 × {libEx.reps}</p>
+                          </div>
+                          <ListPlus className="text-indigo-400" size={20} />
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-                <button onClick={() => removeExercise(ex.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-lg"><X size={18} /></button>
               </div>
-            ))
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className="animate-in fade-in duration-300">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
+              <h2 className="text-base font-semibold mb-4 border-b pb-2 flex items-center gap-2"><Plus size={18} className="text-indigo-500" /> 创建新动作到库</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-2">锻炼部位 (可多选)</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {Object.values(MUSCLES).map(m => {
+                      const isSelected = newEx.targets.includes(m.id);
+                      return <button key={m.id} onClick={() => toggleTargetMuscle(m.id)} className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-all ${isSelected ? 'text-white border-transparent shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'}`} style={{ backgroundColor: isSelected ? m.color : '' }}>{m.name}</button>;
+                    })}
+                  </div>
+                </div>
+                <div><label className="block text-xs text-gray-600 mb-1">动作名称</label><input type="text" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} placeholder="例如：引体向上" /></div>
+                <div className="flex gap-3">
+                  <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">组数</label><input type="number" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.sets} onChange={e => setNewEx({...newEx, sets: parseInt(e.target.value) || 0})} /></div>
+                  <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">次数</label><input type="text" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.reps} onChange={e => setNewEx({...newEx, reps: e.target.value})} /></div>
+                  <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">休息(秒)</label><input type="number" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={newEx.restTime} onChange={e => setNewEx({...newEx, restTime: parseInt(e.target.value) || 0})} /></div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">动作演示视频 (可选)</label>
+                  <input type="file" accept="video/*" className="hidden" ref={fileInputRef} onChange={handleVideoUpload} />
+                  <button 
+                    onClick={() => fileInputRef.current.click()} 
+                    disabled={isUploadingVideo}
+                    className={`w-full border-2 border-dashed rounded-xl p-3 flex items-center justify-center transition gap-2 ${isUploadingVideo ? 'border-indigo-300 text-indigo-500 bg-indigo-50' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    {isUploadingVideo ? (
+                      <><Loader2 size={16} className="animate-spin" /> <span className="text-sm">视频存储中...</span></>
+                    ) : newEx.videoUrl ? (
+                      <><CheckCircle2 size={16} className="text-green-500" /> <span className="text-sm text-green-600">视频已保存 (可重新上传)</span></>
+                    ) : (
+                      <><Video size={16} /> <span className="text-sm">点击选择本地视频文件</span></>
+                    )}
+                  </button>
+                </div>
+                <button onClick={handleAddToLibrary} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 mt-2 shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all">
+                  <Save size={18} /> 保存到动作库
+                </button>
+              </div>
+            </div>
+
+            <h2 className="text-sm font-semibold text-gray-500 mb-3">我的动作库 ({exerciseLibrary.length})</h2>
+            <div className="space-y-3">
+              {exerciseLibrary.length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">暂无收藏的动作</p>
+              ) : (
+                exerciseLibrary.map(ex => (
+                  <div key={ex.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {(ex.targets || []).map(t => MUSCLES[t] && <span key={t} className="w-2 h-2 rounded-full" style={{ backgroundColor: MUSCLES[t].color }}></span>)}
+                      </div>
+                      <p className="font-semibold text-gray-800 text-sm">{ex.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{ex.sets}组 × {ex.reps} | 休息 {ex.restTime}s {ex.videoUrl && ' | 🎬'}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditingEx({...ex}); setEditingContext({ type: 'library' }); }} className="text-gray-400 hover:text-indigo-500 p-2 transition-colors"><Pencil size={18} /></button>
+                      <button onClick={() => removeFromLibrary(ex.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors"><Trash2 size={18} /></button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -538,6 +744,76 @@ export default function App() {
       {currentView === 'manage' && renderManage()}
       {renderNavigation()}
 
+      {/* 弹窗：编辑已有动作 */}
+      {editingEx && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex flex-col justify-end transition-opacity">
+          <div className="bg-white w-full max-w-md mx-auto rounded-t-3xl p-6 pb-12 max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-full duration-300 overflow-y-auto">
+            <div className="flex justify-between items-center mb-4 border-b pb-3">
+              <h2 className="text-lg font-bold text-gray-800">编辑动作信息</h2>
+              <button onClick={() => setEditingEx(null)} className="text-gray-400 hover:bg-gray-100 p-1.5 rounded-full"><X size={20} /></button>
+            </div>
+            
+            <div className="space-y-4">
+               <div><label className="block text-xs text-gray-600 mb-1">动作名称</label><input type="text" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={editingEx.name} onChange={e => setEditingEx({...editingEx, name: e.target.value})} /></div>
+               
+               <div className="flex gap-3">
+                 <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">组数</label><input type="number" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={editingEx.sets} onChange={e => setEditingEx({...editingEx, sets: parseInt(e.target.value) || 0})} /></div>
+                 <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">次数</label><input type="text" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={editingEx.reps} onChange={e => setEditingEx({...editingEx, reps: e.target.value})} /></div>
+                 <div className="flex-1"><label className="block text-xs text-gray-600 mb-1">休息(秒)</label><input type="number" className="w-full border rounded-lg p-2.5 bg-gray-50 text-sm" value={editingEx.restTime} onChange={e => setEditingEx({...editingEx, restTime: parseInt(e.target.value) || 0})} /></div>
+               </div>
+
+               <div>
+                  <label className="block text-xs text-gray-600 mb-1">重新上传视频 (修复失效链接)</label>
+                  <input type="file" accept="video/*" className="hidden" id="editVideoInput" onChange={async (e) => {
+                     const file = e.target.files[0];
+                     if (file) {
+                       if (file.size > 50 * 1024 * 1024) return alert('请上传 50MB 以内的演示视频。');
+                       setIsUploadingVideo(true);
+                       try {
+                         const videoId = `vid_${Date.now()}`;
+                         await saveVideoToDB(videoId, file);
+                         setEditingEx({ ...editingEx, videoUrl: `idb://${videoId}` });
+                       } catch (error) {
+                         console.error(error); alert('保存失败');
+                       } finally {
+                         setIsUploadingVideo(false);
+                       }
+                     }
+                  }} />
+                  <button 
+                    onClick={() => document.getElementById('editVideoInput').click()} 
+                    disabled={isUploadingVideo}
+                    className={`w-full border-2 border-dashed rounded-xl p-3 flex items-center justify-center transition gap-2 ${isUploadingVideo ? 'border-indigo-300 text-indigo-500 bg-indigo-50' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    {isUploadingVideo ? (
+                      <><Loader2 size={16} className="animate-spin" /> <span className="text-sm">视频永久保存中...</span></>
+                    ) : editingEx.videoUrl ? (
+                      <><CheckCircle2 size={16} className="text-green-500" /> <span className="text-sm text-green-600">视频已更新（点击重新选择）</span></>
+                    ) : (
+                      <><Video size={16} /> <span className="text-sm">点击选择视频文件</span></>
+                    )}
+                  </button>
+               </div>
+
+               <button onClick={() => {
+                  if (editingContext.type === 'plan') {
+                     const dayPlan = [...weeklyPlan[editingContext.day]];
+                     const idx = dayPlan.findIndex(x => x.id === editingEx.id);
+                     if(idx > -1) dayPlan[idx] = editingEx;
+                     setWeeklyPlan({...weeklyPlan, [editingContext.day]: dayPlan});
+                  } else {
+                     const newLib = exerciseLibrary.map(x => x.id === editingEx.id ? editingEx : x);
+                     setExerciseLibrary(newLib);
+                  }
+                  setEditingEx(null);
+               }} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all mt-4">
+                 保存修改
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeVideo && (
         <div className="fixed inset-0 bg-black/95 z-50 flex flex-col justify-center items-center transition-opacity duration-300">
           <div className="w-full max-w-md relative flex flex-col h-full">
@@ -545,7 +821,14 @@ export default function App() {
               <button onClick={() => setActiveVideo(null)} className="text-white/70 hover:text-white bg-white/10 p-2 rounded-full backdrop-blur transition"><X size={24} /></button>
             </div>
             <div className="flex-1 flex items-center justify-center p-4">
-              <video src={activeVideo} controls autoPlay loop playsInline className="w-full max-h-[70vh] rounded-lg shadow-2xl" />
+              {playingVideoUrl ? (
+                <video src={playingVideoUrl} controls autoPlay loop playsInline className="w-full max-h-[70vh] rounded-lg shadow-2xl" />
+              ) : (
+                <div className="flex flex-col items-center gap-4 text-white">
+                   <Loader2 className="animate-spin" size={32} />
+                   <span>正在从本地读取视频...</span>
+                </div>
+              )}
             </div>
             <div className="p-6 text-center text-white/50 text-sm">看完视频后，可点击右上角关闭继续打卡</div>
           </div>

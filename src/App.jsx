@@ -3,7 +3,7 @@ import {
   Dumbbell, Play, Plus, Clock, CheckCircle2, 
   Home, Settings, Video, X, RotateCcw,
   Trophy, CalendarDays, CalendarCheck, ChevronLeft, ChevronRight,
-  Activity, Save, Check, Loader2, BookOpen, ListPlus, Trash2, Pencil
+  Activity, Save, Check, Loader2, BookOpen, ListPlus, Trash2, Pencil, FolderPlus
 } from 'lucide-react';
 
 // ==========================================
@@ -515,9 +515,20 @@ export default function App() {
     };
 
     const removeFromPlan = (id) => {
+      if (!window.confirm('确定要从当前计划中删除该动作吗？')) return;
       const updatedPlan = { ...weeklyPlan };
       updatedPlan[manageDay] = updatedPlan[manageDay].filter(ex => ex.id !== id);
       setWeeklyPlan(updatedPlan);
+    };
+
+    const saveToLibraryFromPlan = (ex) => {
+      const exists = exerciseLibrary.some(libEx => libEx.name === ex.name);
+      if (exists) {
+        if (!window.confirm(`动作库中已存在名为"${ex.name}"的动作，确认要重复添加吗？`)) return;
+      }
+      const newLibEx = { ...ex, id: `lib_${Date.now()}` };
+      setExerciseLibrary([...exerciseLibrary, newLibEx]);
+      alert('动作已成功保存到动作库！');
     };
 
     return (
@@ -566,8 +577,9 @@ export default function App() {
                       <p className="text-xs text-gray-400 mt-0.5">{ex.sets}组 × {ex.reps} | 休息 {ex.restTime}s</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setEditingEx({...ex}); setEditingContext({ type: 'plan', day: manageDay }); }} className="text-gray-400 hover:text-indigo-500 p-2 transition-colors"><Pencil size={18} /></button>
-                      <button onClick={() => removeFromPlan(ex.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors"><Trash2 size={18} /></button>
+                      <button onClick={() => saveToLibraryFromPlan(ex)} className="text-gray-400 hover:text-green-500 p-2 transition-colors" title="保存到动作库"><FolderPlus size={18} /></button>
+                      <button onClick={() => { setEditingEx({...ex}); setEditingContext({ type: 'plan', day: manageDay }); }} className="text-gray-400 hover:text-indigo-500 p-2 transition-colors" title="编辑"><Pencil size={18} /></button>
+                      <button onClick={() => removeFromPlan(ex.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors" title="删除"><Trash2 size={18} /></button>
                     </div>
                   </div>
                 ))
@@ -659,8 +671,8 @@ export default function App() {
                       <p className="text-xs text-gray-400 mt-0.5">{ex.sets}组 × {ex.reps} | 休息 {ex.restTime}s {ex.videoUrl && ' | 🎬'}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setEditingEx({...ex}); setEditingContext({ type: 'library' }); }} className="text-gray-400 hover:text-indigo-500 p-2 transition-colors"><Pencil size={18} /></button>
-                      <button onClick={() => removeFromLibrary(ex.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors"><Trash2 size={18} /></button>
+                      <button onClick={() => { setEditingEx({...ex}); setEditingContext({ type: 'library' }); }} className="text-gray-400 hover:text-indigo-500 p-2 transition-colors" title="编辑"><Pencil size={18} /></button>
+                      <button onClick={() => removeFromLibrary(ex.id)} className="text-gray-400 hover:text-red-500 p-2 transition-colors" title="删除"><Trash2 size={18} /></button>
                     </div>
                   </div>
                 ))

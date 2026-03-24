@@ -9,7 +9,7 @@ import {
 // ==========================================
 // 1. 本地永久存储配置
 // ==========================================
-const STORAGE_KEY = 'my_fitness_app_full_v1';
+const STORAGE_KEY = 'my_fitness_app_full_v2';
 
 // ==========================================
 // 2. IndexedDB 视频存储引擎
@@ -58,50 +58,88 @@ const deleteVideoFromDB = async (id) => {
   });
 };
 
-// 肌肉部位定义
+// 肌肉部位定义 - 专业健身分类
 const MUSCLES = {
   chest: { id: 'chest', name: '胸部', color: '#ef4444' }, 
-  back: { id: 'back', name: '背部', color: '#3b82f6' }, 
-  legs: { id: 'legs', name: '腿部', color: '#10b981' }, 
-  core: { id: 'core', name: '核心', color: '#f59e0b' }, 
-  arms: { id: 'arms', name: '手臂', color: '#8b5cf6' }, 
+  shoulders: { id: 'shoulders', name: '肩部', color: '#f87171' },
+  back: { id: 'back', name: '背部', color: '#3b82f6' },
+  lats: { id: 'lats', name: '背阔肌', color: '#1e40af' },
+  biceps: { id: 'biceps', name: '二头肌', color: '#6366f1' },
+  triceps: { id: 'triceps', name: '三头肌', color: '#ec4899' },
+  forearms: { id: 'forearms', name: '前臂', color: '#a855f7' },
+  quads: { id: 'quads', name: '四头肌', color: '#10b981' },
+  hamstrings: { id: 'hamstrings', name: '腘绳肌', color: '#059669' },
+  calves: { id: 'calves', name: '小腿', color: '#34d399' },
+  abs: { id: 'abs', name: '腹部', color: '#fbbf24' }
 };
 
 // 默认动作库
 const defaultLibrary = [
-  { id: 'lib_1', name: '跪姿俯卧撑', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] },
-  { id: 'lib_2', name: '板凳臂屈伸', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['arms'] },
-  { id: 'lib_3', name: '自重深蹲', sets: 4, reps: '15', restTime: 60, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', targets: ['legs'] },
-  { id: 'lib_4', name: '弓箭步', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['legs'] },
-  { id: 'lib_5', name: '平板支撑', sets: 3, reps: '30秒', restTime: 45, videoUrl: null, targets: ['core'] },
-  { id: 'lib_6', name: '卷腹', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['core'] },
-  { id: 'lib_7', name: '引体向上', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['back', 'arms'] },
-  { id: 'lib_8', name: '超人起飞', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['back', 'core'] }
+  // 胸部动作
+  { id: 'lib_1', name: '杠铃平板卧推', sets: 4, reps: '8-10', restTime: 150, videoUrl: null, targets: ['chest', 'triceps'] },
+  { id: 'lib_2', name: '上斜哑铃卧推', sets: 3, reps: '8-12', restTime: 120, videoUrl: null, targets: ['chest', 'shoulders', 'triceps'] },
+  { id: 'lib_3', name: '哑铃侧平举', sets: 4, reps: '12-15', restTime: 90, videoUrl: null, targets: ['shoulders'] },
+  { id: 'lib_4', name: '绳索下压', sets: 3, reps: '10-15', restTime: 90, videoUrl: null, targets: ['triceps'] },
+  // 背部动作
+  { id: 'lib_5', name: '高位下拉', sets: 4, reps: '8-12', restTime: 120, videoUrl: null, targets: ['lats', 'biceps'] },
+  { id: 'lib_6', name: '杠铃划船', sets: 4, reps: '8-10', restTime: 150, videoUrl: null, targets: ['back', 'lats', 'biceps'] },
+  { id: 'lib_7', name: '绳索下拉', sets: 3, reps: '12-15', restTime: 90, videoUrl: null, targets: ['lats', 'biceps'] },
+  { id: 'lib_8', name: '哑铃二头弯举', sets: 3, reps: '10-15', restTime: 90, videoUrl: null, targets: ['biceps', 'forearms'] },
+  // 腿部动作
+  { id: 'lib_9', name: '杠铃深蹲', sets: 4, reps: '8-10', restTime: 180, videoUrl: null, targets: ['quads', 'hamstrings'] },
+  { id: 'lib_10', name: '罗马尼亚硬拉', sets: 3, reps: '8-12', restTime: 150, videoUrl: null, targets: ['hamstrings', 'lats'] },
+  { id: 'lib_11', name: '倒蹬机', sets: 3, reps: '10-12', restTime: 120, videoUrl: null, targets: ['quads', 'hamstrings'] },
+  { id: 'lib_12', name: '站姿提踵', sets: 3, reps: '15-20', restTime: 60, videoUrl: null, targets: ['calves'] },
+  // 保留原始基础动作用于灵活选择
+  { id: 'lib_13', name: '跪姿俯卧撑', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['chest', 'triceps'] },
+  { id: 'lib_14', name: '板凳臂屈伸', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['triceps'] },
+  { id: 'lib_15', name: '自重深蹲', sets: 4, reps: '15', restTime: 60, videoUrl: null, targets: ['quads', 'hamstrings'] },
+  { id: 'lib_16', name: '弓箭步', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['quads', 'hamstrings'] },
+  { id: 'lib_17', name: '平板支撑', sets: 3, reps: '30秒', restTime: 45, videoUrl: null, targets: ['abs'] },
+  { id: 'lib_18', name: '卷腹', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['abs'] },
+  { id: 'lib_19', name: '引体向上', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['lats', 'biceps'] },
+  { id: 'lib_20', name: '超人起飞', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['back', 'abs'] }
 ];
 
-// 默认周计划数据
+// 默认周计划数据 - 专业健身训练方案
 const defaultWeeklyPlan = {
   1: [
-    { id: '101', name: '跪姿俯卧撑', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] },
-    { id: '102', name: '板凳臂屈伸', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['arms'] }
+    { id: '101', name: '杠铃平板卧推', sets: 4, reps: '8-10', restTime: 150, videoUrl: null, targets: ['chest', 'triceps'] },
+    { id: '102', name: '上斜哑铃卧推', sets: 3, reps: '8-12', restTime: 120, videoUrl: null, targets: ['chest', 'shoulders', 'triceps'] },
+    { id: '103', name: '哑铃侧平举', sets: 4, reps: '12-15', restTime: 90, videoUrl: null, targets: ['shoulders'] },
+    { id: '104', name: '绳索下压', sets: 3, reps: '10-15', restTime: 90, videoUrl: null, targets: ['triceps'] }
   ],
   2: [
-    { id: '201', name: '自重深蹲', sets: 4, reps: '15', restTime: 60, videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', targets: ['legs'] },
-    { id: '202', name: '弓箭步', sets: 3, reps: '12', restTime: 60, videoUrl: null, targets: ['legs'] }
+    { id: '201', name: '高位下拉', sets: 4, reps: '8-12', restTime: 120, videoUrl: null, targets: ['lats', 'biceps'] },
+    { id: '202', name: '杠铃划船', sets: 4, reps: '8-10', restTime: 150, videoUrl: null, targets: ['back', 'lats', 'biceps'] },
+    { id: '203', name: '绳索下拉', sets: 3, reps: '12-15', restTime: 90, videoUrl: null, targets: ['lats', 'biceps'] },
+    { id: '204', name: '哑铃二头弯举', sets: 3, reps: '10-15', restTime: 90, videoUrl: null, targets: ['biceps', 'forearms'] }
   ],
   3: [
-    { id: '301', name: '平板支撑', sets: 3, reps: '30秒', restTime: 45, videoUrl: null, targets: ['core'] },
-    { id: '302', name: '卷腹', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['core'] }
+    { id: '301', name: '杠铃深蹲', sets: 4, reps: '8-10', restTime: 180, videoUrl: null, targets: ['quads', 'hamstrings'] },
+    { id: '302', name: '罗马尼亚硬拉', sets: 3, reps: '8-12', restTime: 150, videoUrl: null, targets: ['hamstrings', 'lats'] },
+    { id: '303', name: '倒蹬机', sets: 3, reps: '10-12', restTime: 120, videoUrl: null, targets: ['quads', 'hamstrings'] },
+    { id: '304', name: '站姿提踵', sets: 3, reps: '15-20', restTime: 60, videoUrl: null, targets: ['calves'] }
   ],
   4: [
-    { id: '401', name: '引体向上', sets: 3, reps: '8', restTime: 60, videoUrl: null, targets: ['back', 'arms'] },
-    { id: '402', name: '超人起飞', sets: 3, reps: '15', restTime: 45, videoUrl: null, targets: ['back', 'core'] }
+    { id: '401', name: '杠铃平板卧推', sets: 4, reps: '8-10', restTime: 150, videoUrl: null, targets: ['chest', 'triceps'] },
+    { id: '402', name: '上斜哑铃卧推', sets: 3, reps: '8-12', restTime: 120, videoUrl: null, targets: ['chest', 'shoulders', 'triceps'] },
+    { id: '403', name: '哑铃侧平举', sets: 4, reps: '12-15', restTime: 90, videoUrl: null, targets: ['shoulders'] },
+    { id: '404', name: '绳索下压', sets: 3, reps: '10-15', restTime: 90, videoUrl: null, targets: ['triceps'] }
   ],
   5: [
-    { id: '501', name: '波比跳', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['legs', 'core', 'chest'] },
-    { id: '502', name: '俯卧撑', sets: 3, reps: '10', restTime: 60, videoUrl: null, targets: ['chest', 'arms'] }
+    { id: '501', name: '高位下拉', sets: 4, reps: '8-12', restTime: 120, videoUrl: null, targets: ['lats', 'biceps'] },
+    { id: '502', name: '杠铃划船', sets: 4, reps: '8-10', restTime: 150, videoUrl: null, targets: ['back', 'lats', 'biceps'] },
+    { id: '503', name: '绳索下拉', sets: 3, reps: '12-15', restTime: 90, videoUrl: null, targets: ['lats', 'biceps'] },
+    { id: '504', name: '哑铃二头弯举', sets: 3, reps: '10-15', restTime: 90, videoUrl: null, targets: ['biceps', 'forearms'] }
   ],
-  6: [], 0: []  
+  6: [
+    { id: '601', name: '杠铃深蹲', sets: 4, reps: '8-10', restTime: 180, videoUrl: null, targets: ['quads', 'hamstrings'] },
+    { id: '602', name: '罗马尼亚硬拉', sets: 3, reps: '8-12', restTime: 150, videoUrl: null, targets: ['hamstrings', 'lats'] },
+    { id: '603', name: '倒蹬机', sets: 3, reps: '10-12', restTime: 120, videoUrl: null, targets: ['quads', 'hamstrings'] },
+    { id: '604', name: '站姿提踵', sets: 3, reps: '15-20', restTime: 60, videoUrl: null, targets: ['calves'] }
+  ],
+  0: []
 };
 
 const formatDate = (date) => {

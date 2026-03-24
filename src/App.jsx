@@ -73,6 +73,37 @@ const MUSCLES = {
   abs: { id: 'abs', name: '腹部', color: '#fbbf24' }
 };
 
+const LEGACY_TARGET_MAP = {
+  arms: ['biceps', 'triceps', 'forearms'],
+  legs: ['quads', 'hamstrings', 'calves'],
+  core: ['abs'],
+};
+
+const normalizeTargets = (targets) => {
+  if (!Array.isArray(targets)) return [];
+  const normalized = targets.flatMap((target) => {
+    if (MUSCLES[target]) return [target];
+    if (LEGACY_TARGET_MAP[target]) return LEGACY_TARGET_MAP[target];
+    return [];
+  });
+  return [...new Set(normalized)];
+};
+
+const normalizeExercise = (exercise) => ({
+  ...exercise,
+  targets: normalizeTargets(exercise.targets),
+});
+
+const normalizeWeeklyPlan = (plan) => {
+  if (!plan || typeof plan !== 'object') return defaultWeeklyPlan;
+  const nextPlan = { ...plan };
+  Object.keys(nextPlan).forEach((dayKey) => {
+    const dayExercises = Array.isArray(nextPlan[dayKey]) ? nextPlan[dayKey] : [];
+    nextPlan[dayKey] = dayExercises.map(normalizeExercise);
+  });
+  return nextPlan;
+};
+
 // 默认动作库
 const defaultLibrary = [
   // 胸部动作
@@ -147,18 +178,22 @@ const formatDate = (date) => {
 };
 
 const BodyMap = ({ activeMuscles }) => {
-  const getColor = (muscleId) => activeMuscles.includes(muscleId) ? MUSCLES[muscleId].color : '#e5e7eb';
+  const hasAny = (muscleIds) => muscleIds.some((id) => activeMuscles.includes(id));
+  const torsoColor = hasAny(['back', 'lats']) ? MUSCLES.back.color : (hasAny(['chest']) ? MUSCLES.chest.color : '#e5e7eb');
+  const coreColor = hasAny(['abs']) ? MUSCLES.abs.color : '#e5e7eb';
+  const armColor = hasAny(['shoulders', 'biceps', 'triceps', 'forearms']) ? MUSCLES.biceps.color : '#e5e7eb';
+  const legColor = hasAny(['quads', 'hamstrings', 'calves']) ? MUSCLES.quads.color : '#e5e7eb';
   return (
     <div className="relative w-28 h-48 mx-auto flex items-center justify-center">
       <svg viewBox="0 0 100 200" className="w-full h-full drop-shadow-md transition-all duration-500">
         <circle cx="50" cy="25" r="14" fill="#d1d5db" />
         <rect x="46" y="38" width="8" height="10" fill="#d1d5db" />
-        <path d="M30 48 Q50 48 70 48 L65 85 L35 85 Z" fill={activeMuscles.includes('back') ? getColor('back') : getColor('chest')} className="transition-colors duration-500" />
-        <path d="M35 87 L65 87 L60 115 L40 115 Z" fill={getColor('core')} className="transition-colors duration-500" />
-        <path d="M28 48 Q20 48 15 85 Q12 110 18 115 Q24 115 25 85 L30 55 Z" fill={getColor('arms')} className="transition-colors duration-500" />
-        <path d="M72 48 Q80 48 85 85 Q88 110 82 115 Q76 115 75 85 L70 55 Z" fill={getColor('arms')} className="transition-colors duration-500" />
-        <path d="M38 117 L48 117 L45 190 Q40 195 35 190 Q30 160 32 117 Z" fill={getColor('legs')} className="transition-colors duration-500" />
-        <path d="M62 117 L52 117 L55 190 Q60 195 65 190 Q70 160 68 117 Z" fill={getColor('legs')} className="transition-colors duration-500" />
+        <path d="M30 48 Q50 48 70 48 L65 85 L35 85 Z" fill={torsoColor} className="transition-colors duration-500" />
+        <path d="M35 87 L65 87 L60 115 L40 115 Z" fill={coreColor} className="transition-colors duration-500" />
+        <path d="M28 48 Q20 48 15 85 Q12 110 18 115 Q24 115 25 85 L30 55 Z" fill={armColor} className="transition-colors duration-500" />
+        <path d="M72 48 Q80 48 85 85 Q88 110 82 115 Q76 115 75 85 L70 55 Z" fill={armColor} className="transition-colors duration-500" />
+        <path d="M38 117 L48 117 L45 190 Q40 195 35 190 Q30 160 32 117 Z" fill={legColor} className="transition-colors duration-500" />
+        <path d="M62 117 L52 117 L55 190 Q60 195 65 190 Q70 160 68 117 Z" fill={legColor} className="transition-colors duration-500" />
       </svg>
     </div>
   );
@@ -194,25 +229,16 @@ export default function App() {
   const [editingEx, setEditingEx] = useState(null);
   const [editingContext, setEditingContext] = useState(null);
 
-  useEffect(() => {
-    if (!document.getElementById('tailwind-cdn')) {
-      const script = document.createElement('script');
-      script.id = 'tailwind-cdn';
-      script.src = 'https://cdn.tailwindcss.com';
-      document.head.appendChild(script);
-    }
-  }, []);
-
   // 1. 初始化时：从本地存储读取数据
   useEffect(() => {
     try {
       const savedDataStr = localStorage.getItem(STORAGE_KEY);
       if (savedDataStr) {
         const data = JSON.parse(savedDataStr);
-        if (data.weeklyPlan) setWeeklyPlan(data.weeklyPlan);
+        if (data.weeklyPlan) setWeeklyPlan(normalizeWeeklyPlan(data.weeklyPlan));
         if (data.dailyRecords) setDailyRecords(data.dailyRecords);
         if (data.history) setHistory(data.history);
-        if (data.exerciseLibrary) setExerciseLibrary(data.exerciseLibrary);
+        if (data.exerciseLibrary) setExerciseLibrary(data.exerciseLibrary.map(normalizeExercise));
       }
     } catch (e) {
       console.error("读取本地数据失败", e);
@@ -352,7 +378,7 @@ export default function App() {
 
   const renderHome = () => {
     const isToday = formatDate(new Date()) === activeDateStr;
-    const activeMuscles = [...new Set(currentExercises.flatMap(ex => ex.targets || []))];
+    const activeMuscles = [...new Set(currentExercises.flatMap(ex => normalizeTargets(ex.targets || [])))];
 
     return (
       <div className="pb-28 max-w-md mx-auto h-full flex flex-col">
@@ -396,7 +422,7 @@ export default function App() {
                <h2 className="text-gray-500 text-sm font-medium mb-2">锻炼部位</h2>
                {activeMuscles.length > 0 ? (
                  <div className="flex flex-wrap gap-2">
-                   {activeMuscles.map(m => (
+                   {activeMuscles.filter((m) => MUSCLES[m]).map((m) => (
                      <span key={m} className="px-3 py-1 rounded-full text-[10px] font-bold text-white shadow-sm" style={{ backgroundColor: MUSCLES[m].color }}>
                        {MUSCLES[m].name}
                      </span>

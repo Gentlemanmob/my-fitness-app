@@ -21,8 +21,8 @@
 
 ## 🛠️ 技术栈
 
-- **前端框架**: React 18
-- **样式引擎**: Tailwind CSS (通过 CDN 动态注入，极速排版)
+- **前端框架**: React 19
+- **样式引擎**: Tailwind CSS (通过 CDN 在 `index.html` 预加载)
 - **图标库**: Lucide React
 - **数据存储**: localStorage (轻量数据) + IndexedDB (大型多媒体数据)
 - **部署方式**: Vercel (支持 PWA 添加到手机主屏幕)
@@ -45,6 +45,8 @@ cd my-fitness-app
 ```
 
 ### 2. 安装依赖
+
+> 运行环境要求：Node.js `>=20.19.0`（推荐使用 `.nvmrc`）
 
 ```
 npm install
